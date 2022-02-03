@@ -1,5 +1,3 @@
-
-
 use rspotify::{model::AlbumId, prelude::*, ClientCredsSpotify, Credentials};
 
 fn main() {
