@@ -1,4 +1,10 @@
-use rspotify::{model::AlbumId, prelude::*, ClientCredsSpotify, Credentials};
+use rspotify::{
+    model::{Country, Market, SearchType, TrackId, Id},
+    prelude::*,
+    ClientCredsSpotify, Credentials,
+};
+
+
 
 fn main() {
     let creds = Credentials::from_env().unwrap();
@@ -11,8 +17,29 @@ fn main() {
     spotify.request_token().unwrap();
 
     // Running the requests
-    let birdy_uri = AlbumId::from_uri("spotify:album:0sNOF9WDwhWunNAHPD3Baj").unwrap();
-    let albums = spotify.album(&birdy_uri);
+    // let birdy_uri = AlbumId::from_uri("spotify:album:0sNOF9WDwhWunNAHPD3Baj").unwrap();
+    // let albums = spotify.album(&birdy_uri);
+    // println!("Response: {:#?}", albums);
+    let track_query = "The Killers";
+    let result = spotify.search(
+        track_query,
+        &SearchType::Track,
+        Some(&Market::Country(Country::UnitedStates)),
+None,
+Some(1),
+None,
+    );
+    match result {
+        Ok(tracks) => {
+            println!("Response: {:#?}", tracks);
+        }
+        Err(e) => println!("Error: {}", e),
+    }
 
-    println!("Response: {:#?}", albums);
+    let track_id = TrackId::from_uri("spotify:track:003vvx7Niy0yvhvHt4a68B").unwrap();
+    let track_data = spotify.track_features(&track_id);
+    println!("Response: {:#?}", track_data);
+
+    
+
 }
