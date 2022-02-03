@@ -9,4 +9,5 @@ edition = "2021"
 express = "0.0.2"
 http = "0.2.6"
 querystring = "1.1.0"
+rocket = "0.4.10"
 # request = "0.0.8" this bitchass don't work
