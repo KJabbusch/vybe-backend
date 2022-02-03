@@ -8,4 +8,4 @@ edition = "2021"
 [dependencies]
 express = "0.0.2"
 querystring = "1.1.0"
-request = "0.0.8"
+# request = "0.0.8" this bitchass don't work
