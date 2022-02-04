@@ -42,4 +42,11 @@ None,
 
     
 
+    let danceability = track_data.as_ref().unwrap().danceability;
+    
+    println!("Danceability: {}", danceability);
+    let tempo = track_data.as_ref().unwrap().tempo;
+    let energy = track_data.as_ref().unwrap().energy;
+    
+
 }
