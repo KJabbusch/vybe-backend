@@ -1,69 +1,201 @@
-use rspotify::{
-    model::{Country, Market, SearchType, TrackId, Id, RecommendationsAttribute, ArtistId},
-    prelude::*,
-    ClientCredsSpotify, Credentials, 
+#![feature(proc_macro_hygiene, decl_macro)]
+
+#[macro_use]
+extern crate rocket;
+
+use getrandom::getrandom;
+use rocket::http::{Cookie, Cookies};
+use rocket::response::Redirect;
+use rocket_contrib::json;
+use rocket_contrib::json::JsonValue;
+use rocket_contrib::templates::Template;
+use rspotify::{scopes, AuthCodeSpotify, OAuth, Credentials, Config, prelude::*, Token};
+
+use std::fs;
+use std::{
+    collections::HashMap,
+    env,
+    path::PathBuf,
+    sync::{Arc, Mutex},
 };
 
+#[derive(Debug, Responder)]
+pub enum AppResponse {
+    Template(Template),
+    Redirect(Redirect),
+    Json(JsonValue),
+}
 
+const CACHE_PATH: &str = ".spotify_cache/";
 
-fn main() {
+/// Generate `length` random chars
+fn generate_random_uuid(length: usize) -> String {
+    let alphanum: &[u8] =
+        "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789".as_bytes();
+    let mut buf = vec![0u8; length];
+    getrandom(&mut buf).unwrap();
+    let range = alphanum.len();
+
+    buf.iter()
+        .map(|byte| alphanum[*byte as usize % range] as char)
+        .collect()
+}
+
+fn get_cache_path(cookies: &Cookies) -> PathBuf {
+    let project_dir_path = env::current_dir().unwrap();
+    let mut cache_path = project_dir_path;
+    cache_path.push(CACHE_PATH);
+    cache_path.push(cookies.get("uuid").unwrap().value());
+
+    cache_path
+}
+
+fn create_cache_path_if_absent(cookies: &Cookies) -> PathBuf {
+    let cache_path = get_cache_path(cookies);
+    if !cache_path.exists() {
+        let mut path = cache_path.clone();
+        path.pop();
+        fs::create_dir_all(path).unwrap();
+    }
+    cache_path
+}
+
+fn remove_cache_path(mut cookies: Cookies) {
+    let cache_path = get_cache_path(&cookies);
+    if cache_path.exists() {
+        fs::remove_file(cache_path).unwrap()
+    }
+    cookies.remove(Cookie::named("uuid"))
+}
+
+fn check_cache_path_exists(cookies: &Cookies) -> bool {
+    let cache_path = get_cache_path(cookies);
+    cache_path.exists()
+}
+
+fn init_spotify(cookies: &Cookies) -> AuthCodeSpotify {
+    let config = Config {
+        token_cached: true,
+        cache_path: create_cache_path_if_absent(cookies),
+        ..Default::default()
+    };
+
+    // Please notice that protocol of redirect_uri, make sure it's http
+    // (or https). It will fail if you mix them up.
+    let oauth = OAuth {
+        scopes: scopes!("user-read-currently-playing", "playlist-modify-private"),
+        redirect_uri: "http://localhost:8000/callback".to_owned(),
+        ..Default::default()
+    };
+
+    // Replacing client_id and client_secret with yours.
     let creds = Credentials::from_env().unwrap();
+    // let creds = Credentials::new(
+    //     "e1dce60f1e274e20861ce5d96142a4d3",
+    //     "0e4e03b9be8d465d87fc32857a4b5aa3"
+    // );
 
-    let mut spotify = ClientCredsSpotify::new(creds);
+    AuthCodeSpotify::with_config(creds, oauth, config)
+}
 
-    // Obtaining the access token. Requires to be mutable because the internal
-    // token will be modified. We don't need OAuth for this specific endpoint,
-    // so `...` is used instead of `prompt_for_user_token`.
-    spotify.request_token().unwrap();
+#[get("/callback?<code>")]
+fn callback(cookies: Cookies, code: String) -> AppResponse {
+    let mut spotify = init_spotify(&cookies);
 
-    let track_query = "The Killers";
-    let result = spotify.search(
-        track_query,
-        &SearchType::Track,
-        Some(&Market::Country(Country::UnitedStates)),
-None,
-Some(1),
-None,
-    );
-    match result {
-        Ok(tracks) => {
-            println!("Response: {:#?}", tracks);
+    match spotify.request_token(&code) {
+        Ok(_) => {
+            println!("Request user token successful");
+            AppResponse::Redirect(Redirect::to("/"))
         }
-        Err(e) => println!("Error: {}", e),
+        Err(err) => {
+            println!("Failed to get user token {:?}", err);
+            let mut context = HashMap::new();
+            context.insert("err_msg", "Failed to get token!");
+            AppResponse::Template(Template::render("error", context))
+        }
+    }
+}
+
+#[get("/")]
+fn index(mut cookies: Cookies) -> AppResponse {
+    let mut context = HashMap::new();
+
+    // The user is authenticated if their cookie is set and a cache exists for
+    // them.
+    let authenticated = cookies.get("uuid").is_some() && check_cache_path_exists(&cookies);
+    if !authenticated {
+        cookies.add(Cookie::new("uuid", generate_random_uuid(64)));
+
+        let spotify = init_spotify(&cookies);
+        let auth_url = spotify.get_authorize_url(true).unwrap();
+        context.insert("auth_url", auth_url);
+        return AppResponse::Template(Template::render("authorize", context));
     }
 
-    let track_id = TrackId::from_uri("spotify:track:003vvx7Niy0yvhvHt4a68B").unwrap();
-    let track_data = spotify.track_features(&track_id);
-    // println!("Response: {:#?}", track_data);
+    let cache_path = get_cache_path(&cookies);
+    let token = Token::from_cache(cache_path).unwrap();
+    let spotify = AuthCodeSpotify::from_token(token);
+    match spotify.me() {
+        Ok(user_info) => {
+            context.insert(
+                "display_name",
+                user_info
+                    .display_name
+                    .unwrap_or_else(|| String::from("Dear")),
+            );
+            AppResponse::Template(Template::render("index", context.clone()))
+        }
+        Err(err) => {
+            context.insert("err_msg", format!("Failed for {}!", err));
+            AppResponse::Template(Template::render("error", context))
+        }
+    }
+}
 
-    
+#[get("/sign_out")]
+fn sign_out(cookies: Cookies) -> AppResponse {
+    remove_cache_path(cookies);
+    AppResponse::Redirect(Redirect::to("/"))
+}
 
-    let danceability = track_data.as_ref().unwrap().danceability;
-    let danceability = (danceability * 100.0).round() / 100.0;
-    
-    let tempo = track_data.as_ref().unwrap().tempo;
-    let tempo = tempo.round();
+#[get("/playlists")]
+fn playlist(cookies: Cookies) -> AppResponse {
+    let mut spotify = init_spotify(&cookies);
+    if !spotify.config.cache_path.exists() {
+        return AppResponse::Redirect(Redirect::to("/"));
+    }
 
-    let energy = track_data.as_ref().unwrap().energy;
-    let energy = (energy * 100.0).round() / 100.0;
+    let token = spotify.read_token_cache(false).unwrap();
+    spotify.token = Arc::new(Mutex::new(token));
+    let playlists = spotify.current_user_playlists()
+        .take(50)
+        .filter_map(Result::ok)
+        .collect::<Vec<_>>();
 
-    // println!("Danceability: {} \nTempo: {} \nEnergy: {}", danceability, tempo, energy);
-    
-    
-    // let attributes = RecommendationsAttribute::new(TargetDanceability::danceability, TargetEnergy::energy, TargetTempo::tempo);
-    // let recs = recommendations(attributes, seed_artists, seed_genres, seed_tracks, market, limit);
-    // println!("{:#?}", recs);
+    if playlists.is_empty() {
+        return AppResponse::Redirect(Redirect::to("/"));
+    }
 
-    let rec_tempo = RecommendationsAttribute::TargetTempo(tempo);
-    let rec_energy = RecommendationsAttribute::TargetEnergy(energy);
-    let rec_danceability = RecommendationsAttribute::TargetDanceability(danceability);
-    
-    let artist_id = ArtistId::from_uri("spotify:artist:0C0XlULifJtAgn6ZNCW2eu").unwrap();
-    
-    let seed_artists = Some([&artist_id]);
-    let seed_tracks = Some([&track_id]);
-    let seed_genres = Some(["pop", "rock", "indie"]);
-    let rec_vec = [rec_tempo, rec_energy, rec_danceability];
-    let recommendations = spotify.recommendations(rec_vec, seed_artists, seed_genres, seed_tracks, Some(&Market::Country(Country::UnitedStates)), Some(10));
-    println!("{:#?}", recommendations);
+    AppResponse::Json(json!(playlists))
+}
+
+#[get("/me")]
+fn me(cookies: Cookies) -> AppResponse {
+    let mut spotify = init_spotify(&cookies);
+    if !spotify.config.cache_path.exists() {
+        return AppResponse::Redirect(Redirect::to("/"));
+    }
+
+    spotify.token = Arc::new(Mutex::new(spotify.read_token_cache(false).unwrap()));
+    match spotify.me() {
+        Ok(user_info) => AppResponse::Json(json!(user_info)),
+        Err(_) => AppResponse::Redirect(Redirect::to("/")),
+    }
+}
+
+fn main() {
+    rocket::ignite()
+        .mount("/", routes![index, callback, sign_out, me, playlist])
+        .attach(Template::fairing())
+        .launch();
 }

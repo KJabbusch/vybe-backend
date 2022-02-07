@@ -9,9 +9,13 @@ edition = "2021"
 express = "0.0.2"
 http = "0.2.6"
 querystring = "1.1.0"
-rocket = "0.5.0-rc.1" #it's yelling at nothing shhhhh
+rocket = "0.4.10" #it's yelling at nothing shhhhh
 rspotify = { version = "0.11.3",default-features = false, features = ["client-ureq", "ureq-rustls-tls", "env-file", "cli"]}
 dotenv = "0.15.0"
+rocket_contrib = { version = "0.4.5", features = ["tera_templates"] }
+getrandom = "0.2.0"
+
+
 
 # request = "0.0.8" this bitchass don't work
 
