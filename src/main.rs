@@ -82,9 +82,10 @@ fn init_spotify(cookies: &Cookies) -> AuthCodeSpotify {
 
     // Please notice that protocol of redirect_uri, make sure it's http
     // (or https). It will fail if you mix them up.
+    let redirect = env::var("RSPOTIFY_REDIRECT_URI").unwrap();
     let oauth = OAuth {
         scopes: scopes!("user-read-currently-playing", "playlist-modify-private"),
-        redirect_uri: "http://localhost:8000/callback".to_owned(),
+        redirect_uri: redirect.to_owned(),
         ..Default::default()
     };
 
