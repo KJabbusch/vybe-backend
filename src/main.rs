@@ -1,4 +1,4 @@
-#![feature(proc_macro_hygiene, decl_macro)]
+#![feature(proc_macro_hygiene, decl_macro, into_future)]
 
 #[macro_use]
 extern crate rocket;
@@ -9,9 +9,10 @@ use rocket::response::Redirect;
 use rocket_contrib::json;
 use rocket_contrib::json::JsonValue;
 use rocket_contrib::templates::Template;
-use rspotify::{scopes, AuthCodeSpotify, OAuth, Credentials, Config, prelude::*, Token};
+use rspotify::{scopes, AuthCodeSpotify, OAuth, Credentials, Config, prelude::*, Token, ClientResult};
 
 use std::fs;
+use std::future::IntoFuture;
 use std::{
     collections::HashMap,
     env,
@@ -77,6 +78,7 @@ fn init_spotify(cookies: &Cookies) -> AuthCodeSpotify {
     let config = Config {
         token_cached: true,
         cache_path: create_cache_path_if_absent(cookies),
+        token_refreshing: true,
         ..Default::default()
     };
 
@@ -88,14 +90,7 @@ fn init_spotify(cookies: &Cookies) -> AuthCodeSpotify {
         redirect_uri: redirect.to_owned(),
         ..Default::default()
     };
-
-    // Replacing client_id and client_secret with yours.
     let creds = Credentials::from_env().unwrap();
-    // let creds = Credentials::new(
-    //     "e1dce60f1e274e20861ce5d96142a4d3",
-    //     "0e4e03b9be8d465d87fc32857a4b5aa3"
-    // );
-
     AuthCodeSpotify::with_config(creds, oauth, config)
 }
 
@@ -135,7 +130,25 @@ fn index(mut cookies: Cookies) -> AppResponse {
 
     let cache_path = get_cache_path(&cookies);
     let token = Token::from_cache(cache_path).unwrap();
-    let spotify = AuthCodeSpotify::from_token(token);
+
+    let spotify = if !token.is_expired() {
+        AuthCodeSpotify::from_token(token)
+    } else {
+        let reauth = init_spotify(&cookies).auto_reauth();
+        match reauth {
+            Ok(_) => {
+            },
+            Err(_) => {
+                // yo like what do we do here if it fails??? I don't know
+                // it doesnt want anything but it wants us to handle an error
+                // how does that even make sense lmao
+            }
+        }
+        let cache_path = get_cache_path(&cookies);
+        let token = Token::from_cache(cache_path).unwrap();
+        AuthCodeSpotify::from_token(token)
+    };
+    
     match spotify.me() {
         Ok(user_info) => {
             context.insert(
@@ -150,7 +163,7 @@ fn index(mut cookies: Cookies) -> AppResponse {
             context.insert("err_msg", format!("Failed for {}!", err));
             AppResponse::Template(Template::render("error", context))
         }
-    }
+    }    
 }
 
 #[get("/sign_out")]
