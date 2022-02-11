@@ -11,11 +11,13 @@ express = "0.0.2"
 http = "0.2.6"
 querystring = "1.1.0"
 rocket = "0.4.10" #it's yelling at nothing shhhhh
-rspotify = { version = "0.11.3", default-features = false, features = ["client-ureq", "ureq-rustls-tls"] }
+rspotify = { version = "0.11.3", default-features = false, features = ["client-ureq", "ureq-rustls-tls", "cli", "env-file"] }
+ureq = { version = "2.4.0", features = ["json"] }
 dotenv = "0.15.0"
 rocket_contrib = { version = "0.4.5", features = ["tera_templates"] }
 getrandom = "0.2.0"
-
+chrono = "0.4.0"
+tokio = { version = "1.16.1", features = ["full"]}
 
 
 # request = "0.0.8" this bitchass don't work

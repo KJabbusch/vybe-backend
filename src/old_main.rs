@@ -67,7 +67,4 @@ fn main() {
     // this gives us the ability to GRAB a playlist that's already been made -- requires us to know the playlist id
     let playlist = spotify.user_playlist(&user_id, Some(&playlist_id), Some(""));
     // println!("{:#?}", playlist);
-
-    
-
 }
