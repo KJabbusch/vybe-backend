@@ -8,26 +8,37 @@ use chrono::Duration;
 use rspotify::{
     prelude::*, scopes, AuthCodeSpotify,
     Config, Credentials, OAuth,
-    model::{Country, Market, SearchType, TrackId, Id, RecommendationsAttribute, ArtistId, UserId, PlaylistId, SearchResult},
+    model::{Country, Market, SearchType, TrackId, Id, RecommendationsAttribute, ArtistId, 
+        UserId, PlaylistId, SearchResult, SimplifiedTrack, idtypes::PlayableId, Page, FullTrack, FullPlaylist},
 };
 
 use tokio;
 
 // Sample request that will follow some artists, print the user's
 // followed artists, and then unfollow the artists.
-async fn auth_code_do_things(spotify: &AuthCodeSpotify) {
+async fn auth_code_do_things(spotify: AuthCodeSpotify) {
     let user_id = spotify.current_user().unwrap().id;
     println!("current user id: {}", &user_id);
     
-    let playlist = spotify
+    let playlist: FullPlaylist = spotify
         .user_playlist_create(&user_id, "pwlease werk", Some(true), Some(false), Some("testing!!!!!"))
         // .await
         .expect("bitch aint work");
-    println!("{:#?}", playlist);
+    // println!("{:#?}", playlist);
+    let playlist_id = playlist.id;
+    let tracks = the_killers(&spotify);
     
+    let playable: Vec<&dyn PlayableId> = tracks
+        .iter()
+        .map(|id| id as &dyn PlayableId)
+        .collect::<Vec<&dyn PlayableId>>();
+    
+    let final_try =spotify.playlist_add_items(&playlist_id, playable, Some(0));
+    println!("{:#?}", final_try);
+    // playable
 }
 
-async fn the_killers(spotify: AuthCodeSpotify) {
+fn the_killers(spotify: &AuthCodeSpotify) -> Vec<TrackId> {
     let track_query = "The Killers";
     let track_query_result = spotify.search(
         track_query,
@@ -38,16 +49,16 @@ async fn the_killers(spotify: AuthCodeSpotify) {
         None,
     );
 
-    let track_result = match track_query_result {
+    let track_result: Page<FullTrack> = match track_query_result {
         Ok(tracks) => {
             match tracks {
                 SearchResult::Tracks(tracks) => tracks,
-                _ => {return;}
+                _ => panic!("Unexpected result"),
             }
         }
         Err(err) => {
             println!("Error: {}", err);
-            return;
+            return Vec::new();
         }
     };
 
@@ -75,8 +86,19 @@ async fn the_killers(spotify: AuthCodeSpotify) {
     let rec_vec = [rec_tempo, rec_energy, rec_danceability];
     let recommendations = spotify.recommendations(rec_vec, seed_artists, seed_genres, seed_tracks, Some(&Market::Country(Country::UnitedStates)), Some(10));
 
-    
+    let songs: Vec<SimplifiedTrack> = match recommendations {
+        Ok(recommendations) => recommendations.tracks,
+        Err(err) => {
+            println!("Error: {}", err);
+            return Vec::new();
+        }
+    };
+
+    let song_list = songs.iter().map(|song| song.id.as_ref().unwrap().clone()).collect::<Vec<TrackId>>();
+
+    song_list
 }
+
 
 async fn expire_token<S: BaseClient>(spotify: &S) {
     let token_mutex = spotify.get_token();
@@ -104,7 +126,7 @@ async fn with_auth(creds: Credentials, oauth: OAuth, config: Config) {
         .expect("couldn't authenticate successfully");
 
     // We can now perform requests
-    auth_code_do_things(&spotify).await;
+    auth_code_do_things(spotify).await;
 
     // Manually expiring the token.
     // expire_token(&spotify).await;
