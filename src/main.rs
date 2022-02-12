@@ -11,7 +11,8 @@ use rspotify::{
     model::{Country, Market, SearchType, TrackId, Id, RecommendationsAttribute, ArtistId, 
         UserId, PlaylistId, SearchResult, SimplifiedTrack, idtypes::PlayableId, Page, FullTrack, FullPlaylist},
 };
-
+use std::io;
+use std::iter::Iterator;
 use tokio;
 
 // Sample request that will follow some artists, print the user's
@@ -38,14 +39,29 @@ async fn auth_code_do_things(spotify: AuthCodeSpotify) {
     // playable
 }
 
+fn get_artist_from_user() -> String {
+    let mut artist_name = String::new();
+    println!("Enter artist name: ");
+    io::stdin().read_line(&mut artist_name).expect("Failed to read line");
+    artist_name.trim().to_string()
+}
+
+fn get_song_from_user() -> String {
+    let mut song_name = String::new();
+    println!("Enter song name: ");
+    io::stdin().read_line(&mut song_name).expect("Failed to read line");
+    song_name.trim().to_string()
+}
+
 fn the_killers(spotify: &AuthCodeSpotify) -> Vec<TrackId> {
-    let track_query = "The Killers";
+    // we need to ask user for artist
+    let track_query = get_artist_from_user();
     let track_query_result = spotify.search(
-        track_query,
+        &track_query,
         &SearchType::Track,
         Some(&Market::Country(Country::UnitedStates)),
         None,
-        Some(1),
+        Some(10),
         None,
     );
 
@@ -61,8 +77,16 @@ fn the_killers(spotify: &AuthCodeSpotify) -> Vec<TrackId> {
             return Vec::new();
         }
     };
+    let track_result_copy = track_result.clone();
+    for track in &track_result_copy.items {
+        println!("{}", track.name);
+    }
 
-    let track_id = track_result.items[0].id.as_ref().unwrap();
+    let track_name = get_song_from_user();
+
+    let track_id = &track_result.items.into_iter().find(|track| track.name == track_name).unwrap().id.unwrap();
+    let artist_id = track_result_copy.items.into_iter().find(|track| track.name == track_name).unwrap().artists.into_iter().find(|artist| artist.name == track_query).unwrap().id.unwrap();
+    
     let track_data = spotify.track_features(&track_id);
 
     let danceability = track_data.as_ref().unwrap().danceability;
@@ -77,8 +101,6 @@ fn the_killers(spotify: &AuthCodeSpotify) -> Vec<TrackId> {
     let rec_tempo = RecommendationsAttribute::TargetTempo(tempo);
     let rec_energy = RecommendationsAttribute::TargetEnergy(energy);
     let rec_danceability = RecommendationsAttribute::TargetDanceability(danceability);
-    
-    let artist_id = ArtistId::from_uri("spotify:artist:0C0XlULifJtAgn6ZNCW2eu").unwrap();
     
     let seed_artists = Some([&artist_id]);
     let seed_tracks = Some([track_id]);
@@ -99,7 +121,6 @@ fn the_killers(spotify: &AuthCodeSpotify) -> Vec<TrackId> {
     song_list
 }
 
-
 async fn expire_token<S: BaseClient>(spotify: &S) {
     let token_mutex = spotify.get_token();
     let mut token = token_mutex.lock().unwrap(); // there was an await before unwrap
@@ -118,7 +139,7 @@ async fn with_auth(creds: Credentials, oauth: OAuth, config: Config) {
     // In the first session of the application we authenticate and obtain the
     // refresh token.
     println!(">>> Session one, obtaining refresh token and running some requests:");
-    let mut spotify = AuthCodeSpotify::with_config(creds.clone(), oauth, config.clone());
+    let mut spotify: AuthCodeSpotify = AuthCodeSpotify::with_config(creds.clone(), oauth, config.clone());
     let url = spotify.get_authorize_url(false).unwrap();
     spotify
         .prompt_for_token(&url)
@@ -127,43 +148,18 @@ async fn with_auth(creds: Credentials, oauth: OAuth, config: Config) {
 
     // We can now perform requests
     auth_code_do_things(spotify).await;
-
-    // Manually expiring the token.
-    // expire_token(&spotify).await;
-
-    // Without automatically refreshing tokens, this would cause an
-    // authentication error when making a request, because the auth token is
-    // invalid. However, since it will be refreshed automatically, this will
-    // work.
-    // println!(">>> Session two, the token should expire, then re-auth automatically");
-    // auth_code_do_things(&spotify).await;
 }
-
-
 
 #[tokio::main]
 async fn main() {
-    // You can use any logger for debugging.
-    // env_logger::init();
-
-    // Enabling automatic token refreshing in the config
     let config = Config {
         token_refreshing: true,
         ..Default::default()
     };
 
-    // The default credentials from the `.env` file will be used by default.
-    
-    // let redirect = dotenv::var("RSPOTIFY_REDIRECT_URI").unwrap();
-    // let oauth = OAuth {
-    //     // redirect_uri: redirect.to_owned(),
-    //     scopes: scopes!("user-read-currently-playing", "playlist-modify-private"),
-    //     ..Default::default()
-    // };
     let creds = Credentials::from_env().unwrap();
     let oauth = OAuth::from_env(scopes!("user-read-currently-playing", "playlist-modify-public")).unwrap();
 
     with_auth(creds.clone(), oauth, config.clone()).await;
-    // AuthCodeSpotify::with_config(creds, oauth, config)
 }
 
