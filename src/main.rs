@@ -12,6 +12,7 @@ use rspotify::{
         UserId, PlaylistId, SearchResult, SimplifiedTrack, idtypes::PlayableId, Page, FullTrack, FullPlaylist},
 };
 use std::io;
+use std::collections::HashMap;
 use std::iter::Iterator;
 use tokio;
 
@@ -20,9 +21,11 @@ use tokio;
 async fn auth_code_do_things(spotify: AuthCodeSpotify) {
     let user_id = spotify.current_user().unwrap().id;
     println!("current user id: {}", &user_id);
+
+    let playlist_name = get_playlist_from_user();
     
     let playlist: FullPlaylist = spotify
-        .user_playlist_create(&user_id, "pwlease werk", Some(true), Some(false), Some("testing!!!!!"))
+        .user_playlist_create(&user_id, &playlist_name, Some(true), Some(false), Some("testing!!!!!"))
         // .await
         .expect("bitch aint work");
     // println!("{:#?}", playlist);
@@ -53,6 +56,22 @@ fn get_song_from_user() -> String {
     song_name.trim().to_string()
 }
 
+fn get_playlist_from_user() -> String {
+    let mut playlist_name = String::new();
+    println!("Enter name for your vybe!: ");
+    io::stdin().read_line(&mut playlist_name).expect("Failed to read line");
+    playlist_name.trim().to_string()
+}
+
+fn hash_map_from_tracks(tracks: Page<FullTrack>) -> HashMap<String, String> {
+    let mut track_map = HashMap::new();
+    for (i, track) in tracks.items.into_iter().enumerate() {
+        track_map.insert(format!("{}", i), track.name);
+    };
+    track_map
+
+}
+
 fn the_killers(spotify: &AuthCodeSpotify) -> Vec<TrackId> {
     // we need to ask user for artist
     let track_query = get_artist_from_user();
@@ -78,14 +97,17 @@ fn the_killers(spotify: &AuthCodeSpotify) -> Vec<TrackId> {
         }
     };
     let track_result_copy = track_result.clone();
-    for track in &track_result_copy.items {
-        println!("{}", track.name);
-    }
 
+    let track_map = hash_map_from_tracks(track_result_copy);
+    println!("{:#?}", track_map);
+    // for track in &track_result_copy.items {
+    //     println!("{}", track.name);
+    // }
+    let another_track_copy = track_result.items.clone();
     let track_name = get_song_from_user();
 
     let track_id = &track_result.items.into_iter().find(|track| track.name == track_name).unwrap().id.unwrap();
-    let artist_id = track_result_copy.items.into_iter().find(|track| track.name == track_name).unwrap().artists.into_iter().find(|artist| artist.name == track_query).unwrap().id.unwrap();
+    let artist_id = another_track_copy.into_iter().find(|track| track.name == track_name).unwrap().artists.into_iter().find(|artist| artist.name == track_query).unwrap().id.unwrap();
     
     let track_data = spotify.track_features(&track_id);
 
