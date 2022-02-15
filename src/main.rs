@@ -8,7 +8,7 @@ use rspotify::{
     prelude::*, scopes, AuthCodeSpotify,
     Config, Credentials, OAuth,
     model::{Country, Market, SearchType, TrackId, RecommendationsAttribute, ArtistId, 
-    SearchResult, SimplifiedTrack, idtypes::PlayableId, Page, FullTrack, FullPlaylist},
+    SearchResult, idtypes::PlayableId, Page, FullTrack, FullArtist, FullPlaylist},
 };
 use std::io;
 use std::collections::HashMap;
@@ -41,11 +41,28 @@ async fn auth_code_do_things(spotify: AuthCodeSpotify) {
     // playable
 }
 
-fn get_artist_from_user() -> String {
+fn get_artist_from_user(spotify: &AuthCodeSpotify) -> (String, ArtistId) {
     let mut artist_name = String::new();
     println!("Enter artist name: ");
     io::stdin().read_line(&mut artist_name).expect("Failed to read line");
-    artist_name.trim().to_string()
+    artist_name.trim().to_string();
+    let artist_query_result = spotify.search(
+        &artist_name,
+        &SearchType::Artist,
+        Some(&Market::Country(Country::UnitedStates)),
+        None,
+        None,
+        None,
+    ).unwrap();
+
+    let artists = match artist_query_result {
+        SearchResult::Artists(tracks) => tracks,
+        _ => panic!("Unexpected result"),
+    };
+
+    let artist_map = hash_map_from_artists(artists);
+    println!("{:#?}", artist_map);
+    prompt_artist_from_user(artist_map)
 }
 
 fn get_song_from_user(mut track_map: HashMap<String, String>) -> String {
@@ -63,6 +80,21 @@ fn get_song_from_user(mut track_map: HashMap<String, String>) -> String {
     }
 }
 
+fn prompt_artist_from_user(mut artist_map: HashMap<String, (String, ArtistId)>) -> (String, ArtistId) {
+    let mut artist_num = String::new();
+    println!("Enter number for artist: ");
+    io::stdin().read_line(&mut artist_num).expect("Failed to read line");
+    let artist_num = artist_num.trim();
+    let return_artist = artist_num.clone();
+    if artist_map.contains_key(artist_num) {
+        artist_map.remove(return_artist).unwrap()
+    } else {
+        println!("Invalid artist number");
+        prompt_artist_from_user(artist_map)
+        // (String::new(), ArtistId::new())
+    }
+}
+
 fn get_playlist_from_user() -> String {
     let mut playlist_name = String::new();
     println!("Enter name for your vybe!: ");
@@ -70,12 +102,20 @@ fn get_playlist_from_user() -> String {
     playlist_name.trim().to_string()
 }
 
-fn hash_map_from_tracks(tracks: Page<FullTrack>) -> HashMap<String, String> {
+fn hash_map_from_tracks(tracks: Vec<FullTrack>) -> HashMap<String, String> {
     let mut track_map = HashMap::new();
-    for (i, track) in tracks.items.into_iter().enumerate() {
+    for (i, track) in tracks.into_iter().enumerate() {
         track_map.insert(format!("{}", i), track.name);
     };
     track_map
+}
+
+fn hash_map_from_artists(artists: Page<FullArtist>) -> HashMap<String, (String, ArtistId)> {
+    let mut artist_map = HashMap::new();
+    for (i, artist) in artists.items.into_iter().enumerate() {
+        artist_map.insert(format!("{}", i), (artist.name, artist.id));
+    };
+    artist_map
 }
 
 fn get_seed_genres(spotify: &AuthCodeSpotify, artist_id: &ArtistId) -> HashMap<String, String>{
@@ -114,41 +154,50 @@ fn get_genre_from_user(genre_map: & mut HashMap<String, String>) -> Vec<String> 
     genre_vec
 }
 
+fn gets_top_songs(spotify: &AuthCodeSpotify, artist_id: ArtistId) -> Vec<FullTrack> {
+    spotify.artist_top_tracks(&artist_id, &Market::Country(Country::UnitedStates)).unwrap()
+}
+
 fn the_killers(spotify: &AuthCodeSpotify) -> Vec<TrackId> {
     // we need to ask user for artist
-    let track_query = get_artist_from_user();
-    let track_query_result = spotify.search(
-        &track_query,
-        &SearchType::Track,
-        Some(&Market::Country(Country::UnitedStates)),
-        None,
-        None,
-        None,
-    );
+    let (track_query, artist_id_init) = get_artist_from_user(spotify);
 
-    let track_result: Page<FullTrack> = match track_query_result {
-        Ok(tracks) => {
-            match tracks {
-                SearchResult::Tracks(tracks) => tracks,
-                _ => panic!("Unexpected result"),
-            }
-        }
-        Err(err) => {
-            println!("Error: {}", err);
-            return Vec::new();
-        }
-    };
+    let tracks_from_artist = gets_top_songs(spotify, artist_id_init);
+    // let track_query_result = spotify.search(
+    //     &track_query,
+    //     &SearchType::Track,
+    //     Some(&Market::Country(Country::UnitedStates)),
+    //     None,
+    //     None,
+    //     None,
+    // );
 
-    let track_result_copy = track_result.clone();
-    let track_map = hash_map_from_tracks(track_result_copy);
+    // let track_result: Page<FullTrack> = match track_query_result {
+    //     Ok(tracks) => {
+    //         match tracks {
+    //             SearchResult::Tracks(tracks) => tracks,
+    //             _ => panic!("Unexpected result"),
+    //         }
+    //     }
+    //     Err(err) => {
+    //         println!("Error: {}", err);
+    //         return Vec::new();
+    //     }
+    // };
+
+    // let track_result_copy = track_result.clone();
+
+    let track_copy = tracks_from_artist.clone();
+    let another_track_copy = tracks_from_artist.clone();
+    let track_map = hash_map_from_tracks(tracks_from_artist);
     println!("{:#?}", track_map);
     // for track in &track_result_copy.items {
     //     println!("{}", track.name);
     // }
-    let another_track_copy = track_result.items.clone();
+    
     let track_name = get_song_from_user(track_map);
 
-    let track_id = &track_result.items.into_iter().find(|track| track.name == track_name).unwrap().id.unwrap();
+    let track_id = track_copy.into_iter().find(|track| track.name == track_name).unwrap().id.unwrap();
     let artist_id = another_track_copy.into_iter().find(|track| track.name == track_name).unwrap().artists.into_iter().find(|artist| artist.name == track_query).unwrap().id.unwrap();
     
     let track_data = spotify.track_features(&track_id);
@@ -196,7 +245,7 @@ fn the_killers(spotify: &AuthCodeSpotify) -> Vec<TrackId> {
     println!("{:?}", new_vec);
 
     let seed_artists = Some([&artist_id]);
-    let seed_tracks = Some([track_id]);
+    let seed_tracks = Some([&track_id]);
     let seed_genres = Some(new_vec);
     let rec_vec = [rec_tempo, rec_energy, rec_valence, rec_time, rec_instrumentalness, rec_acousticness];
     let recommendations = spotify.recommendations(rec_vec, seed_artists, seed_genres, seed_tracks, Some(&Market::Country(Country::UnitedStates)), Some(50));
@@ -214,7 +263,7 @@ fn the_killers(spotify: &AuthCodeSpotify) -> Vec<TrackId> {
     
     let mut track_ids = Vec::<TrackId>::new();
     for i in 0..10 {
-        let current = tracks_full[i].id.clone().unwrap();
+        let current = tracks_full[i+20].id.clone().unwrap();
         track_ids.push(current);
     }
     track_ids
