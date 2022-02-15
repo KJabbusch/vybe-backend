@@ -98,6 +98,7 @@ fn get_genre_from_user(genre_map: & mut HashMap<String, String>) -> Vec<String> 
         }
         
     } else {
+        println!("{:?}", genre_map);
         for i in 0..3 {
             let mut genre_num = String::new();
             let mut genre_map = genre_map.clone();
