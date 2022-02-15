@@ -3,13 +3,12 @@
 //! Spotify server, it will check whether the token is expired and automatically
 //! re-authenticate by refresh_token if set `Token.token_refreshing` to true.
 
-use chrono::offset::Utc;
-use chrono::Duration;
+
 use rspotify::{
     prelude::*, scopes, AuthCodeSpotify,
     Config, Credentials, OAuth,
-    model::{Country, Market, SearchType, TrackId, Id, RecommendationsAttribute, ArtistId, 
-        UserId, PlaylistId, SearchResult, SimplifiedTrack, idtypes::PlayableId, Page, FullTrack, FullPlaylist},
+    model::{Country, Market, SearchType, TrackId, RecommendationsAttribute, ArtistId, 
+    SearchResult, SimplifiedTrack, idtypes::PlayableId, Page, FullTrack, FullPlaylist},
 };
 use std::io;
 use std::collections::HashMap;
@@ -25,7 +24,7 @@ async fn auth_code_do_things(spotify: AuthCodeSpotify) {
     let playlist_name = get_playlist_from_user();
     
     let playlist: FullPlaylist = spotify
-        .user_playlist_create(&user_id, &playlist_name, Some(true), Some(false), Some("testing!!!!!"))
+        .user_playlist_create(&user_id, &playlist_name, Some(true), Some(false), Some("A vybe ✨!!!"))
         // .await
         .expect("bitch aint work");
     // println!("{:#?}", playlist);
@@ -96,7 +95,6 @@ fn get_genre_from_user(genre_map: & mut HashMap<String, String>) -> Vec<String> 
             let genre = genre_map.remove(&format!("{}", i)).unwrap();
             genre_vec.push(genre);
         }
-        
     } else {
         println!("{:?}", genre_map);
         for i in 0..3 {
@@ -112,7 +110,6 @@ fn get_genre_from_user(genre_map: & mut HashMap<String, String>) -> Vec<String> 
                 get_genre_from_user(&mut genre_map);
             }
         }
-        
     }
     genre_vec
 }
@@ -156,8 +153,8 @@ fn the_killers(spotify: &AuthCodeSpotify) -> Vec<TrackId> {
     
     let track_data = spotify.track_features(&track_id);
 
-    let danceability = track_data.as_ref().unwrap().danceability;
-    let danceability = (danceability * 100.0).round() / 100.0;
+    // let danceability = track_data.as_ref().unwrap().danceability;
+    // let danceability = (danceability * 100.0).round() / 100.0;
     
     let tempo = track_data.as_ref().unwrap().tempo;
     let tempo = tempo.round();
@@ -165,9 +162,27 @@ fn the_killers(spotify: &AuthCodeSpotify) -> Vec<TrackId> {
     let energy = track_data.as_ref().unwrap().energy;
     let energy = (energy * 100.0).round() / 100.0;
 
+    let valence = track_data.as_ref().unwrap().valence;
+    let valence = (valence * 100.0).round() / 100.0;
+
+    let acousticness = track_data.as_ref().unwrap().acousticness;
+    let acousticness = (acousticness * 100.0).round() / 100.0;
+
+    let instrumentalness = track_data.as_ref().unwrap().instrumentalness;
+    let instrumentalness = (instrumentalness * 100.0).round() / 100.0;
+
+    // let mode = track_data.as_ref().unwrap().mode;
+
+    let time_signature = track_data.as_ref().unwrap().time_signature;
+
     let rec_tempo = RecommendationsAttribute::TargetTempo(tempo);
     let rec_energy = RecommendationsAttribute::TargetEnergy(energy);
-    let rec_danceability = RecommendationsAttribute::TargetDanceability(danceability);
+    // let rec_danceability = RecommendationsAttribute::TargetDanceability(danceability);
+    let rec_valence = RecommendationsAttribute::TargetValence(valence);
+    // let rec_mode = RecommendationsAttribute::TargetMode(mode); this is an enummmmmm
+    let rec_time = RecommendationsAttribute::TargetTimeSignature(time_signature);
+    let rec_instrumentalness = RecommendationsAttribute::TargetInstrumentalness(instrumentalness);
+    let rec_acousticness = RecommendationsAttribute::TargetAcousticness(acousticness);
 
     let mut genre_map = get_seed_genres(spotify, &artist_id);
 
@@ -183,7 +198,7 @@ fn the_killers(spotify: &AuthCodeSpotify) -> Vec<TrackId> {
     let seed_artists = Some([&artist_id]);
     let seed_tracks = Some([track_id]);
     let seed_genres = Some(new_vec);
-    let rec_vec = [rec_tempo, rec_energy, rec_danceability];
+    let rec_vec = [rec_tempo, rec_energy, rec_valence, rec_time, rec_instrumentalness, rec_acousticness];
     let recommendations = spotify.recommendations(rec_vec, seed_artists, seed_genres, seed_tracks, Some(&Market::Country(Country::UnitedStates)), Some(10));
 
     let songs: Vec<SimplifiedTrack> = match recommendations {
@@ -195,22 +210,7 @@ fn the_killers(spotify: &AuthCodeSpotify) -> Vec<TrackId> {
     };
 
     let song_list = songs.iter().map(|song| song.id.as_ref().unwrap().clone()).collect::<Vec<TrackId>>();
-
     song_list
-}
-
-async fn expire_token<S: BaseClient>(spotify: &S) {
-    let token_mutex = spotify.get_token();
-    let mut token = token_mutex.lock().unwrap(); // there was an await before unwrap
-    let mut token = token.as_mut().expect("Token can't be empty as this point");
-    // In a regular case, the token would expire with time. Here we just do
-    // it manually.
-    let now = Utc::now().checked_sub_signed(Duration::seconds(10));
-    token.expires_at = now;
-    token.expires_in = Duration::seconds(0);
-    // We also use a garbage access token to make sure it's actually
-    // refreshed.
-    token.access_token = "garbage".to_owned();
 }
 
 async fn with_auth(creds: Credentials, oauth: OAuth, config: Config) {
