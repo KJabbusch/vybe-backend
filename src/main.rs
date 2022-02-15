@@ -1,9 +1,3 @@
-//! Automatically re-authentication means you only need to authenticate the
-//! usual way at most once to get token. Then everytime you send a request to
-//! Spotify server, it will check whether the token is expired and automatically
-//! re-authenticate by refresh_token if set `Token.token_refreshing` to true.
-
-
 use rspotify::{
     prelude::*, scopes, AuthCodeSpotify,
     Config, Credentials, OAuth,
@@ -15,8 +9,6 @@ use std::collections::HashMap;
 use std::iter::Iterator;
 use tokio;
 
-// Sample request that will follow some artists, print the user's
-// followed artists, and then unfollow the artists.
 async fn auth_code_do_things(spotify: AuthCodeSpotify) {
     let user_id = spotify.current_user().unwrap().id;
     println!("current user id: {}", &user_id);
@@ -25,9 +17,8 @@ async fn auth_code_do_things(spotify: AuthCodeSpotify) {
     
     let playlist: FullPlaylist = spotify
         .user_playlist_create(&user_id, &playlist_name, Some(true), Some(false), Some("A vybe ✨!!!"))
-        // .await
         .expect("bitch aint work");
-    // println!("{:#?}", playlist);
+
     let playlist_id = playlist.id;
     let tracks = the_killers(&spotify);
     
@@ -38,7 +29,6 @@ async fn auth_code_do_things(spotify: AuthCodeSpotify) {
     
     let final_try =spotify.playlist_add_items(&playlist_id, playable, Some(0));
     println!("{:#?}", final_try);
-    // playable
 }
 
 fn get_artist_from_user(spotify: &AuthCodeSpotify) -> (String, ArtistId) {
@@ -91,7 +81,6 @@ fn prompt_artist_from_user(mut artist_map: HashMap<String, (String, ArtistId)>) 
     } else {
         println!("Invalid artist number");
         prompt_artist_from_user(artist_map)
-        // (String::new(), ArtistId::new())
     }
 }
 
@@ -159,41 +148,14 @@ fn gets_top_songs(spotify: &AuthCodeSpotify, artist_id: ArtistId) -> Vec<FullTra
 }
 
 fn the_killers(spotify: &AuthCodeSpotify) -> Vec<TrackId> {
-    // we need to ask user for artist
     let (track_query, artist_id_init) = get_artist_from_user(spotify);
 
     let tracks_from_artist = gets_top_songs(spotify, artist_id_init);
-    // let track_query_result = spotify.search(
-    //     &track_query,
-    //     &SearchType::Track,
-    //     Some(&Market::Country(Country::UnitedStates)),
-    //     None,
-    //     None,
-    //     None,
-    // );
-
-    // let track_result: Page<FullTrack> = match track_query_result {
-    //     Ok(tracks) => {
-    //         match tracks {
-    //             SearchResult::Tracks(tracks) => tracks,
-    //             _ => panic!("Unexpected result"),
-    //         }
-    //     }
-    //     Err(err) => {
-    //         println!("Error: {}", err);
-    //         return Vec::new();
-    //     }
-    // };
-
-    // let track_result_copy = track_result.clone();
 
     let track_copy = tracks_from_artist.clone();
     let another_track_copy = tracks_from_artist.clone();
     let track_map = hash_map_from_tracks(tracks_from_artist);
     println!("{:#?}", track_map);
-    // for track in &track_result_copy.items {
-    //     println!("{}", track.name);
-    // }
     
     let track_name = get_song_from_user(track_map);
 
@@ -201,9 +163,6 @@ fn the_killers(spotify: &AuthCodeSpotify) -> Vec<TrackId> {
     let artist_id = another_track_copy.into_iter().find(|track| track.name == track_name).unwrap().artists.into_iter().find(|artist| artist.name == track_query).unwrap().id.unwrap();
     
     let track_data = spotify.track_features(&track_id);
-
-    // let danceability = track_data.as_ref().unwrap().danceability;
-    // let danceability = (danceability * 100.0).round() / 100.0;
     
     let tempo = track_data.as_ref().unwrap().tempo;
     let tempo = tempo.round();
@@ -220,15 +179,11 @@ fn the_killers(spotify: &AuthCodeSpotify) -> Vec<TrackId> {
     let instrumentalness = track_data.as_ref().unwrap().instrumentalness;
     let instrumentalness = (instrumentalness * 100.0).round() / 100.0;
 
-    // let mode = track_data.as_ref().unwrap().mode;
-
     let time_signature = track_data.as_ref().unwrap().time_signature;
 
     let rec_tempo = RecommendationsAttribute::TargetTempo(tempo);
     let rec_energy = RecommendationsAttribute::TargetEnergy(energy);
-    // let rec_danceability = RecommendationsAttribute::TargetDanceability(danceability);
     let rec_valence = RecommendationsAttribute::TargetValence(valence);
-    // let rec_mode = RecommendationsAttribute::TargetMode(mode); this is an enummmmmm
     let rec_time = RecommendationsAttribute::TargetTimeSignature(time_signature);
     let rec_instrumentalness = RecommendationsAttribute::TargetInstrumentalness(instrumentalness);
     let rec_acousticness = RecommendationsAttribute::TargetAcousticness(acousticness);
@@ -236,7 +191,7 @@ fn the_killers(spotify: &AuthCodeSpotify) -> Vec<TrackId> {
     let mut genre_map = get_seed_genres(spotify, &artist_id);
 
     let genre_vec = get_genre_from_user(&mut genre_map);
-    // let (genre_vec_copy, genre_vec) = i_hate_borrowed_shit(genre_vec);
+
     let mut new_vec = Vec::<&str>::new();
     for genre in &genre_vec {
         new_vec.push(genre.as_str());
@@ -270,17 +225,13 @@ fn the_killers(spotify: &AuthCodeSpotify) -> Vec<TrackId> {
 }
 
 async fn with_auth(creds: Credentials, oauth: OAuth, config: Config) {
-    // In the first session of the application we authenticate and obtain the
-    // refresh token.
     println!(">>> Session one, obtaining refresh token and running some requests:");
     let mut spotify: AuthCodeSpotify = AuthCodeSpotify::with_config(creds.clone(), oauth, config.clone());
     let url = spotify.get_authorize_url(false).unwrap();
     spotify
         .prompt_for_token(&url)
-        // .await
         .expect("couldn't authenticate successfully");
 
-    // We can now perform requests
     auth_code_do_things(spotify).await;
 }
 
