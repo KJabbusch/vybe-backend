@@ -49,11 +49,19 @@ fn get_artist_from_user() -> String {
     artist_name.trim().to_string()
 }
 
-fn get_song_from_user() -> String {
-    let mut song_name = String::new();
-    println!("Enter song name: ");
-    io::stdin().read_line(&mut song_name).expect("Failed to read line");
-    song_name.trim().to_string()
+fn get_song_from_user(mut track_map: HashMap<String, String>) -> String {
+    let mut song_num = String::new();
+    println!("Enter number for song: ");
+    io::stdin().read_line(&mut song_num).expect("Failed to read line");
+    let song_num = song_num.trim();
+    let return_song = song_num.clone();
+    if track_map.contains_key(song_num) {
+        track_map.remove(return_song).unwrap()
+    } else {
+        println!("Invalid song number");
+        get_song_from_user(track_map);
+        String::new()
+    }
 }
 
 fn get_playlist_from_user() -> String {
@@ -69,7 +77,43 @@ fn hash_map_from_tracks(tracks: Page<FullTrack>) -> HashMap<String, String> {
         track_map.insert(format!("{}", i), track.name);
     };
     track_map
+}
 
+fn get_seed_genres(spotify: &AuthCodeSpotify, artist_id: &ArtistId) -> HashMap<String, String>{
+    let artist_genres = spotify.artist(artist_id).unwrap().genres;
+    let mut genre_map = HashMap::new();
+    for (i, genre) in artist_genres.into_iter().enumerate() {
+        genre_map.insert(format!("{}", i), genre);
+    }
+    genre_map
+}
+
+fn get_genre_from_user(genre_map: & mut HashMap<String, String>) -> Vec<String> {
+    let mut genre_vec = Vec::new();
+    let loop_num = genre_map.len();
+    if genre_map.len() <= 3 {
+        for i in 0..loop_num {
+            let genre = genre_map.remove(&format!("{}", i)).unwrap();
+            genre_vec.push(genre);
+        }
+        
+    } else {
+        for i in 0..3 {
+            let mut genre_num = String::new();
+            let mut genre_map = genre_map.clone();
+            println!("Enter number for genre: ");
+            io::stdin().read_line(&mut genre_num).expect("Failed to read line");
+            let genre_num = genre_num.trim();
+            if genre_map.contains_key(genre_num) {
+                genre_vec.push(genre_map.remove(genre_num).unwrap());
+            } else {
+                println!("Invalid genre number");
+                get_genre_from_user(&mut genre_map);
+            }
+        }
+        
+    }
+    genre_vec
 }
 
 fn the_killers(spotify: &AuthCodeSpotify) -> Vec<TrackId> {
@@ -80,7 +124,7 @@ fn the_killers(spotify: &AuthCodeSpotify) -> Vec<TrackId> {
         &SearchType::Track,
         Some(&Market::Country(Country::UnitedStates)),
         None,
-        Some(10),
+        None,
         None,
     );
 
@@ -96,15 +140,15 @@ fn the_killers(spotify: &AuthCodeSpotify) -> Vec<TrackId> {
             return Vec::new();
         }
     };
-    let track_result_copy = track_result.clone();
 
+    let track_result_copy = track_result.clone();
     let track_map = hash_map_from_tracks(track_result_copy);
     println!("{:#?}", track_map);
     // for track in &track_result_copy.items {
     //     println!("{}", track.name);
     // }
     let another_track_copy = track_result.items.clone();
-    let track_name = get_song_from_user();
+    let track_name = get_song_from_user(track_map);
 
     let track_id = &track_result.items.into_iter().find(|track| track.name == track_name).unwrap().id.unwrap();
     let artist_id = another_track_copy.into_iter().find(|track| track.name == track_name).unwrap().artists.into_iter().find(|artist| artist.name == track_query).unwrap().id.unwrap();
@@ -123,10 +167,21 @@ fn the_killers(spotify: &AuthCodeSpotify) -> Vec<TrackId> {
     let rec_tempo = RecommendationsAttribute::TargetTempo(tempo);
     let rec_energy = RecommendationsAttribute::TargetEnergy(energy);
     let rec_danceability = RecommendationsAttribute::TargetDanceability(danceability);
-    
+
+    let mut genre_map = get_seed_genres(spotify, &artist_id);
+
+    let genre_vec = get_genre_from_user(&mut genre_map);
+    // let (genre_vec_copy, genre_vec) = i_hate_borrowed_shit(genre_vec);
+    let mut new_vec = Vec::<&str>::new();
+    for genre in &genre_vec {
+        new_vec.push(genre.as_str());
+    }
+
+    println!("{:?}", new_vec);
+
     let seed_artists = Some([&artist_id]);
     let seed_tracks = Some([track_id]);
-    let seed_genres = Some(["pop", "rock", "indie"]);
+    let seed_genres = Some(new_vec);
     let rec_vec = [rec_tempo, rec_energy, rec_danceability];
     let recommendations = spotify.recommendations(rec_vec, seed_artists, seed_genres, seed_tracks, Some(&Market::Country(Country::UnitedStates)), Some(10));
 
