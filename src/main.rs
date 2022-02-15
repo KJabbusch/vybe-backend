@@ -199,18 +199,25 @@ fn the_killers(spotify: &AuthCodeSpotify) -> Vec<TrackId> {
     let seed_tracks = Some([track_id]);
     let seed_genres = Some(new_vec);
     let rec_vec = [rec_tempo, rec_energy, rec_valence, rec_time, rec_instrumentalness, rec_acousticness];
-    let recommendations = spotify.recommendations(rec_vec, seed_artists, seed_genres, seed_tracks, Some(&Market::Country(Country::UnitedStates)), Some(10));
+    let recommendations = spotify.recommendations(rec_vec, seed_artists, seed_genres, seed_tracks, Some(&Market::Country(Country::UnitedStates)), Some(50));
 
-    let songs: Vec<SimplifiedTrack> = match recommendations {
-        Ok(recommendations) => recommendations.tracks,
+    let songs = match recommendations {
+        Ok(recommendations) => recommendations.tracks.into_iter().map(|track| track.id.unwrap()).collect::<Vec<TrackId>>(),
         Err(err) => {
             println!("Error: {}", err);
             return Vec::new();
         }
     };
 
-    let song_list = songs.iter().map(|song| song.id.as_ref().unwrap().clone()).collect::<Vec<TrackId>>();
-    song_list
+    let mut tracks_full = spotify.tracks(&songs, Some(&Market::Country(Country::UnitedStates))).unwrap();
+    tracks_full.sort_by(|a, b| a.popularity.cmp(&b.popularity));
+    
+    let mut track_ids = Vec::<TrackId>::new();
+    for i in 0..10 {
+        let current = tracks_full[i].id.clone().unwrap();
+        track_ids.push(current);
+    }
+    track_ids
 }
 
 async fn with_auth(creds: Credentials, oauth: OAuth, config: Config) {
