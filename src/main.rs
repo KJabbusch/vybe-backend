@@ -1,13 +1,15 @@
 use rspotify::{
     prelude::*, scopes, AuthCodeSpotify,
     Config, Credentials, OAuth,
-    model::{Country, Market, SearchType, TrackId, RecommendationsAttribute, ArtistId, 
-    SearchResult, idtypes::PlayableId, Page, FullTrack, FullArtist, FullPlaylist},
+    model::{Country, Market, SearchType, RecommendationsAttribute, ArtistId, 
+    SearchResult, idtypes::PlayableId, Page, FullTrack, FullArtist, TrackId, FullPlaylist},
 };
 use std::io;
 use std::collections::HashMap;
 use std::iter::Iterator;
 use tokio;
+use std::str::FromStr;
+
 
 async fn auth_code_do_things(spotify: AuthCodeSpotify) {
     let user_id = spotify.current_user().unwrap().id;
@@ -215,14 +217,27 @@ fn the_killers(spotify: &AuthCodeSpotify) -> Vec<TrackId> {
 
     let mut tracks_full = spotify.tracks(&songs, Some(&Market::Country(Country::UnitedStates))).unwrap();
     tracks_full.sort_by(|a, b| a.popularity.cmp(&b.popularity));
-    
-    let mut track_ids = Vec::<TrackId>::new();
-    for i in 0..10 {
-        let current = tracks_full[i+20].id.clone().unwrap();
-        track_ids.push(current);
-    }
-    track_ids
+    gets_unique_artists_songs(tracks_full)
 }
+
+fn gets_unique_artists_songs(tracks_full: Vec<FullTrack>) -> Vec<TrackId> {
+    let new_tracks_full = tracks_full.clone();
+    let mut track_ids = Vec::<TrackId>::new();
+    let mut counter = 20;
+    let mut used_artists = Vec::new();
+    
+    while track_ids.len() < 10 {
+        let current_artist = &tracks_full[counter].artists;
+        let track_id = new_tracks_full[counter].id.as_ref().unwrap();
+        let track_id = track_id.clone();
+        if !(used_artists.contains(&current_artist)) {
+            track_ids.push(track_id);
+            used_artists.push(current_artist);
+        }
+        counter += 1;    
+        }
+    track_ids
+    }
 
 async fn with_auth(creds: Credentials, oauth: OAuth, config: Config) {
     println!(">>> Session one, obtaining refresh token and running some requests:");
